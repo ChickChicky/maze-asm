@@ -1,9 +1,18 @@
 format ELF executable 3
 entry start
 
+; TODO: Refactor things like:
+;        add eax, map
+;        mov [eax], ...
+;       To:
+;        mov [eax+map], ...
+
 segment readable executable
 
     start:
+
+        call random_seed_now
+        call generate_maze
 
         ; Updates the 'old' player position to the current one
         call move_end
@@ -197,6 +206,248 @@ segment readable executable
 
         ret
 
+    random:
+
+        mov eax, [rng_s]
+        mov ebx, rng_a
+        mul ebx
+        add eax, rng_c
+
+        mov [rng_s], eax
+        
+        shr eax, 16
+        and eax, 15
+
+        mov [rng_v], eax
+
+    ret
+
+    random_seed_now:
+
+        mov eax, 43
+        mov ebx, 0
+        int 80h
+
+        mov [rng_s], eax
+
+    ret
+
+    generate_maze:
+
+        mov [mzi], width + 1
+        mov [mzn], 0
+
+        mov eax, 0
+        maze_fill:
+
+            mov [eax + map], 1
+
+            add eax, 1
+            cmp eax, width * height
+            jne maze_fill
+
+        mov eax,       [mzi]
+        mov [eax+map], 0
+
+        mov eax,  [mzs]
+        mov ebx,  [mzi]
+        mov [eax], ebx
+
+        generate_maze_loop:
+
+            add [mzn], 1
+
+            mov eax, [mzi]
+            xor edx, edx
+            mov ecx, width
+            div ecx
+            mov [mzx], edx
+            mov [mzy], eax
+
+            cmp [mzn], 1
+            je  generate_maze_flags
+            mov eax, [mzi]
+            cmp eax, width + 1
+            jne generate_maze_flags
+            mov [map+width*height-height-2], 2
+            ret
+
+            generate_maze_flags:
+                mov eax, 15
+
+                ; Checks if the generator is at the top / left / bottom / right edge,
+                ; in which case it removes it from the available moves
+            
+                cmp [mzx], 1
+                jne no_left
+                and eax, C_L
+                no_left: 
+                
+                cmp [mzx], width-2
+                jne no_right
+                and eax, C_R
+                no_right: 
+                
+                cmp [mzy], 1
+                jne no_up
+                and eax, C_U
+                no_up:
+
+                cmp [mzy], height-2
+                jne no_down
+                and eax, C_D
+                no_down:
+
+                ; Move back if no valid option is available
+                cmp eax, 0
+                je go_back
+
+                ; Checks for each direction, if the generator can move towards it, it checks
+                ; if the cell at that position is already explored, in which case it removes
+                ; it from the available moves
+
+                mov ebx, eax      ; b = flags
+                and ebx, D_L      ; b = flags & D_L
+                cmp ebx, 0        ; if (flags & D_L == 0)
+                je  no_chk_left   ;   goto no_chk_left
+                mov ebx, [mzi]    ; b = i
+                sub ebx, 2        ; b = i-2
+                add ebx, map     ; b = &map[i-2]
+                cmp [ebx], byte 0 ; if (map[i-2] != 0)
+                jne no_chk_left   ;   goto no_chk_left
+                and eax, C_L      ; flags &= C_L
+                no_chk_left:      ; 
+
+                mov ebx, eax      ; b = flags
+                and ebx, D_R      ; b = flags & D_R
+                cmp ebx, 0        ; if (flags & D_R == 0)
+                je  no_chk_right  ;   goto no_chk_right
+                mov ebx, [mzi]    ; b = i
+                add ebx, 2        ; b = i+2 
+                add ebx, map      ; b = &map[i+2]
+                cmp [ebx], byte 0 ; if (map[i+2] != 0)
+                jne no_chk_right  ;   goto no_chk_right
+                and eax, C_R      ; flags &= C_R
+                no_chk_right:     ; 
+
+                mov ebx, eax      ; b = flags
+                and ebx, D_U      ; b = flags & D_U
+                cmp ebx, 0        ; if (flags & D_U == 0)
+                je  no_chk_up     ;   goto no_chk_up
+                mov ebx, [mzi]    ; b = i
+                sub ebx, width*2  ; b = i-2*width
+                add ebx, map      ; b = &map[i-2*width]
+                cmp [ebx], byte 0 ; if (map[i-2*width] != 0)
+                jne no_chk_up     ;   goto no_chk_up
+                and eax, C_U      ; flags &= C_U
+                no_chk_up:        ; 
+
+                mov ebx, eax      ; b = flags
+                and ebx, D_D      ; b = flags & D_D
+                cmp ebx, 0        ; if (flags & D_D == 0)
+                je  no_chk_down   ;   goto no_chk_down
+                mov ebx, [mzi]    ; b = i
+                add ebx, width*2  ; b = i+2*width
+                add ebx, map      ; b = &map[i+2*width]
+                cmp [ebx], byte 0 ; if (map[i+2*width] != 0)
+                jne no_chk_down   ;   goto no_chk_down
+                and eax, C_D      ; flags &= C_D
+                no_chk_down:      ; 
+
+                ; Move back if no valid option is available
+                cmp eax, 0
+                je go_back
+
+                mov [tmp], eax
+
+                generate_maze_rng: ; Generates a new random number that will allow one move or more
+
+                    call random
+
+                    mov ebx, [tmp]
+                    and ebx, [rng_v]
+
+                    cmp ebx, 0
+                    je  generate_maze_rng
+
+                mov eax, ebx
+
+                ; Moves the generator
+
+                mov ebx,       eax    ; b = flags
+                and ebx,       D_L    ; b = flags & D_L
+                cmp ebx,       0      ; if (flags & D_L == 0)
+                je  maze_left         ;   goto maze_left
+                mov ebx,       [mzi]  ; b = mzi
+                sub ebx,       1      ; b = mzi - 1
+                mov [ebx+map], byte 0 ; map[mzi - 1] = 0
+                sub ebx,       1      ; b = mzi - 2
+                mov [mzi],     ebx    ; mzi = mzi - 2
+                mov [ebx+map], byte 0 ; map[mzi] = 0
+                jmp maze_down
+                maze_left:
+
+                mov ebx,       eax    ; b = flags
+                and ebx,       D_R    ; b = flags & D_R
+                cmp ebx,       0      ; if (flags & D_R == 0)
+                je  maze_right        ;   goto maze_right
+                mov ebx,       [mzi]  ; b = mzi
+                add ebx,       1      ; b = mzi + 1
+                mov [ebx+map], byte 0 ; map[mzi + 1] = 0
+                add ebx,       1      ; b = mzi + 2
+                mov [mzi],     ebx    ; mzi = mzi + 2
+                mov [ebx+map], byte 0 ; map[mzi] = 0
+                jmp maze_down
+                maze_right:
+
+                mov ebx,       eax    ; b = flags
+                and ebx,       D_U    ; b = flags & D_U
+                cmp ebx,       0      ; if (flags & D_U == 0)
+                je  maze_up           ;   goto maze_up
+                mov ebx,       [mzi]  ; b = mzi
+                sub ebx,       width  ; b = mzi - width
+                mov [ebx+map], byte 0 ; map[mzi - width] = 0
+                sub ebx,       width  ; b = mzi - 2*width
+                mov [mzi],     ebx    ; mzi = mzi - 2*width
+                mov [ebx+map], byte 0 ; map[mzi] = 0
+                jmp maze_down
+                maze_up:
+
+                mov ebx,       eax    ; b = flags
+                and ebx,       D_D    ; b = flags & D_D
+                cmp ebx,       0      ; if (flags & D_D == 0)
+                je  maze_down         ;   goto maze_down
+                mov ebx,       [mzi]  ; b = mzi
+                add ebx,       width  ; b = mzi + width
+                mov [ebx+map], byte 0 ; map[mzi + width] = 0
+                add ebx,       width  ; b = mzi + 2*width
+                mov [mzi],     ebx    ; mzi = mzi + 2*width
+                mov [ebx+map], byte 0 ; map[mzi] = 0
+                jmp maze_down
+                maze_down:
+
+                ; mzs.push(mzi)
+                mov eax,   [mzs]
+                add eax,   4
+                mov ebx,   [mzi]
+                mov [eax], ebx
+                mov [mzs], eax 
+
+                jmp generate_maze_loop
+
+            go_back:
+
+                ; mzi = mzs.pop()
+                mov eax,   [mzs]
+                mov ebx,   [eax]
+                mov [mzi], ebx
+                sub eax,   4
+                mov [mzs], eax
+
+                jmp generate_maze_loop
+
+    ret
+
     quit: ; Exists the program
 
         mov eax, 1
@@ -204,6 +455,23 @@ segment readable executable
         int 80h
 
 segment readable writeable
+
+    tmp dd ?
+
+    D_L = 2
+    D_R = 1
+    D_D = 4
+    D_U = 8
+
+    C_L = 13
+    C_R = 14
+    C_D = 11
+    C_U = 7
+
+    rng_v dd ?
+    rng_s dd 1245
+    rng_a =  1664525
+    rng_c =  1013904223
 
     ; Whether the next frame should be displayed
     ; (disabled whenever the newline character is processed)
@@ -213,29 +481,34 @@ segment readable writeable
     won_msg db "Congrats ! You won !", 10
     won_len =  $ - won_msg
 
-    ren_i dw ? ; Holds the current index in the rendering loop
-    ren_c dw ? ; Holds the current column in the rendering loo
-    ren_l dw ? ; Holds the current line in the rendering loop
+    ren_i dw ? ; Current index in the rendering loop
+    ren_c dw ? ; Current column in the rendering loo
+    ren_l dw ? ; Current line in the rendering loop
 
-    inp_v dw ? ; Holds the current input characte
+    inp_v dw ? ; Current input character
 
     ren db " #." ; The characters used for rendering the board cells
     nwl db 10    ; Newline character
     plr db "@"   ; The character used to render the player
+    dbg db "?"
 
     ; Player position before it moves
     qx dw ?
     qy dw ?
 
     ; Current player position
-    px dw 3
-    py dw 3
+    px dw 1
+    py dw 1
 
     ; Map size and data
-    width  = 5
-    height = 5
-    map    db 1, 1, 1, 1, 1, \
-              1, 2, 0, 0, 1, \
-              1, 0, 1, 0, 1, \
-              1, 0, 0, 0, 1, \
-              1, 1, 1, 1, 1
+    width  = 15
+    height = 15
+    map    rb width * height
+
+    mzx dd ?
+    mzy dd ?
+    mzi dd ?
+    mzn dd ?
+
+    mzs      dd mzs_base
+    mzs_base rd width * height
