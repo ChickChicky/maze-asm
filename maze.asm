@@ -1,12 +1,6 @@
 format ELF executable 3
 entry start
 
-; TODO: Refactor things like:
-;        add eax, map
-;        mov [eax], ...
-;       To:
-;        mov [eax+map], ...
-
 segment readable executable
 
     start:
@@ -228,17 +222,17 @@ segment readable executable
         mov ebx, 0
         int 80h
 
-        mov [rng_s], eax
+        add [rng_s], eax
 
     ret
 
     generate_maze:
 
-        mov [mzi], width + 1
-        mov [mzn], 0
+        mov [mzi], width + 1 ; Starts generating the maze at 1,1
+        mov [mzn], 0         ; Initializes the iteration count to 0, used later for backtracking
 
         mov eax, 0
-        maze_fill:
+        maze_fill: ; Fills the entire maze with walls
 
             mov [eax + map], 1
 
@@ -247,8 +241,9 @@ segment readable executable
             jne maze_fill
 
         mov eax,       [mzi]
-        mov [eax+map], 0
+        mov [eax+map], 0     ; Sets the starting cell to empty
 
+        ; Sets the bottom-most value of the stack to the starting position
         mov eax,  [mzs]
         mov ebx,  [mzi]
         mov [eax], ebx
@@ -257,6 +252,7 @@ segment readable executable
 
             add [mzn], 1
 
+            ; Computes the x and y coordinates corresponding to the current index
             mov eax, [mzi]
             xor edx, edx
             mov ecx, width
@@ -264,12 +260,15 @@ segment readable executable
             mov [mzx], edx
             mov [mzy], eax
 
+            ; First, checks whether it is the first iteration
+            ; if not, it then checks if the top-most value on the stack is the starting position,
+            ; in which case it returns from the routine
             cmp [mzn], 1
             je  generate_maze_flags
             mov eax, [mzi]
             cmp eax, width + 1
             jne generate_maze_flags
-            mov [map+width*height-height-2], 2
+            mov [map+width*height-width-2], 2
             ret
 
             generate_maze_flags:
@@ -306,73 +305,67 @@ segment readable executable
                 ; if the cell at that position is already explored, in which case it removes
                 ; it from the available moves
 
-                mov ebx, eax      ; b = flags
-                and ebx, D_L      ; b = flags & D_L
-                cmp ebx, 0        ; if (flags & D_L == 0)
-                je  no_chk_left   ;   goto no_chk_left
-                mov ebx, [mzi]    ; b = i
-                sub ebx, 2        ; b = i-2
-                add ebx, map     ; b = &map[i-2]
-                cmp [ebx], byte 0 ; if (map[i-2] != 0)
-                jne no_chk_left   ;   goto no_chk_left
-                and eax, C_L      ; flags &= C_L
-                no_chk_left:      ; 
+                mov ebx, eax            ; b = flags
+                and ebx, D_L            ; b = flags & D_L
+                cmp ebx, 0              ; if (flags & D_L == 0)
+                je  no_chk_left         ;   goto no_chk_left
+                mov ebx, [mzi]          ; b = i
+                cmp [ebx+map-2], byte 0 ; if (map[i-2] != 0)
+                jne no_chk_left         ;   goto no_chk_left
+                and eax, C_L            ; flags &= C_L
+                no_chk_left:            ; 
 
-                mov ebx, eax      ; b = flags
-                and ebx, D_R      ; b = flags & D_R
-                cmp ebx, 0        ; if (flags & D_R == 0)
-                je  no_chk_right  ;   goto no_chk_right
-                mov ebx, [mzi]    ; b = i
-                add ebx, 2        ; b = i+2 
-                add ebx, map      ; b = &map[i+2]
-                cmp [ebx], byte 0 ; if (map[i+2] != 0)
-                jne no_chk_right  ;   goto no_chk_right
-                and eax, C_R      ; flags &= C_R
-                no_chk_right:     ; 
+                mov ebx, eax            ; b = flags
+                and ebx, D_R            ; b = flags & D_R
+                cmp ebx, 0              ; if (flags & D_R == 0)
+                je  no_chk_right        ;   goto no_chk_right
+                mov ebx, [mzi]          ; b = i
+                cmp [ebx+map+2], byte 0 ; if (map[i+2] != 0)
+                jne no_chk_right        ;   goto no_chk_right
+                and eax, C_R            ; flags &= C_R
+                no_chk_right:           ; 
 
-                mov ebx, eax      ; b = flags
-                and ebx, D_U      ; b = flags & D_U
-                cmp ebx, 0        ; if (flags & D_U == 0)
-                je  no_chk_up     ;   goto no_chk_up
-                mov ebx, [mzi]    ; b = i
-                sub ebx, width*2  ; b = i-2*width
-                add ebx, map      ; b = &map[i-2*width]
-                cmp [ebx], byte 0 ; if (map[i-2*width] != 0)
-                jne no_chk_up     ;   goto no_chk_up
-                and eax, C_U      ; flags &= C_U
-                no_chk_up:        ; 
+                mov ebx, eax                  ; b = flags
+                and ebx, D_U                  ; b = flags & D_U
+                cmp ebx, 0                    ; if (flags & D_U == 0)
+                je  no_chk_up                 ;   goto no_chk_up
+                mov ebx, [mzi]                ; b = i
+                cmp [ebx+map-width*2], byte 0 ; if (map[i-2*width] != 0)
+                jne no_chk_up                 ;   goto no_chk_up
+                and eax, C_U                  ; flags &= C_U
+                no_chk_up:                    ; 
 
-                mov ebx, eax      ; b = flags
-                and ebx, D_D      ; b = flags & D_D
-                cmp ebx, 0        ; if (flags & D_D == 0)
-                je  no_chk_down   ;   goto no_chk_down
-                mov ebx, [mzi]    ; b = i
-                add ebx, width*2  ; b = i+2*width
-                add ebx, map      ; b = &map[i+2*width]
-                cmp [ebx], byte 0 ; if (map[i+2*width] != 0)
-                jne no_chk_down   ;   goto no_chk_down
-                and eax, C_D      ; flags &= C_D
-                no_chk_down:      ; 
+                mov ebx, eax                  ; b = flags
+                and ebx, D_D                  ; b = flags & D_D
+                cmp ebx, 0                    ; if (flags & D_D == 0)
+                je  no_chk_down               ;   goto no_chk_down
+                mov ebx, [mzi]                ; b = i
+                cmp [ebx+map+width*2], byte 0 ; if (map[i+2*width] != 0)
+                jne no_chk_down               ;   goto no_chk_down
+                and eax, C_D                  ; flags &= C_D
+                no_chk_down:                  ; 
 
                 ; Move back if no valid option is available
                 cmp eax, 0
                 je go_back
 
-                mov [tmp], eax
+                mov [tmp], eax ; Saves the move flags into tmp
 
                 generate_maze_rng: ; Generates a new random number that will allow one move or more
 
                     call random
 
+                    ; Ands the generated number with the move flags
                     mov ebx, [tmp]
                     and ebx, [rng_v]
 
+                    ; Tries to generate another one if no bit is left set in the move flags
                     cmp ebx, 0
                     je  generate_maze_rng
 
                 mov eax, ebx
 
-                ; Moves the generator
+                ; Moves the generator according to the first bit set in the move flags
 
                 mov ebx,       eax    ; b = flags
                 and ebx,       D_L    ; b = flags & D_L
