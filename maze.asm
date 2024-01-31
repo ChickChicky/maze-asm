@@ -60,8 +60,8 @@ segment readable executable
                 add ecx, map     ; c = map+ren_i
                 xor eax, eax     ; a = 0
                 mov al,  [ecx]   ; a = map[ren_i]
-                mov ebx, 3
-                mul ebx
+                mov ebx, 4       ; (takes unicode into account, not really important)
+                mul ebx          ; /
                 mov ecx, eax     ; c = map[ren_i]
                 add ecx, ren     ; c = ren+map[ren_i] (a pointer to the character to be displayed from the render sheet)
 
@@ -69,7 +69,7 @@ segment readable executable
 
             mov eax, 4 ; WRITE
             mov ebx, 1 ; STDOUT
-            mov edx, 3 ; 
+            mov edx, 4 ; 1 character (but potentially unicode, so 4 bytes total)
             int 80h    ; syscall
 
             ; Increases the column by 1
@@ -482,7 +482,10 @@ segment readable writeable
 
     inp_v dw ? ; Current input character
 
-    ren db 0,0," █",0,0,"+" ; The characters used for rendering the board cells
+    ren:       ; The characters used for rendering the board cells
+        dd ' '
+        dd '█'
+        dd '+'
     nwl db 10    ; Newline character
     plr db 0,0,"@"   ; The character used to render the player
 
