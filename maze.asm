@@ -56,18 +56,20 @@ segment readable executable
             ren_map:
 
                 ; ecx := ren[map[ren_i]]
-                mov cx, [ren_i] ; c = ren_i
-                add ecx, map    ; c = map+ren_i
-                xor eax, eax    ; a = 0
-                mov al,  [ecx]  ; a = map[ren_i]
-                mov ecx, eax    ; c = map[ren_i]
-                add ecx, ren    ; c = ren+map[ren_i] (a pointer to the character to be displayed from the render sheet)
+                mov cx,  [ren_i] ; c = ren_i
+                add ecx, map     ; c = map+ren_i
+                xor eax, eax     ; a = 0
+                mov al,  [ecx]   ; a = map[ren_i]
+                mov ebx, 3
+                mul ebx
+                mov ecx, eax     ; c = map[ren_i]
+                add ecx, ren     ; c = ren+map[ren_i] (a pointer to the character to be displayed from the render sheet)
 
             ren_post:
 
             mov eax, 4 ; WRITE
             mov ebx, 1 ; STDOUT
-            mov edx, 1 ; 1 character
+            mov edx, 3 ; 
             int 80h    ; syscall
 
             ; Increases the column by 1
@@ -209,7 +211,7 @@ segment readable executable
 
         mov [rng_s], eax
         
-        shr eax, 16
+        shr eax, 10
         and eax, 15
 
         mov [rng_v], eax
@@ -463,8 +465,8 @@ segment readable writeable
 
     rng_v dd ?
     rng_s dd 1245
-    rng_a =  1664525
-    rng_c =  1013904223
+    rng_a =  1103515245
+    rng_c =  12345
 
     ; Whether the next frame should be displayed
     ; (disabled whenever the newline character is processed)
@@ -480,10 +482,9 @@ segment readable writeable
 
     inp_v dw ? ; Current input character
 
-    ren db " #." ; The characters used for rendering the board cells
+    ren db 0,0," █",0,0,"+" ; The characters used for rendering the board cells
     nwl db 10    ; Newline character
-    plr db "@"   ; The character used to render the player
-    dbg db "?"
+    plr db 0,0,"@"   ; The character used to render the player
 
     ; Player position before it moves
     qx dw ?
