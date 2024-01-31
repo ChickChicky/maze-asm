@@ -56,12 +56,12 @@ segment readable executable
             ren_map:
 
                 ; ecx := ren[map[ren_i]]
-                mov cl,  byte[ren_i] ; c = ren_i
-                add ecx, map         ; c = map+ren_i
-                xor eax, eax         ; a = 0
-                mov al,  [ecx]       ; a = map[ren_i]
-                mov ecx, eax         ; c = map[ren_i]
-                add ecx, ren         ; c = ren+map[ren_i] (a pointer to the character to be displayed from the render sheet)
+                mov cx, [ren_i] ; c = ren_i
+                add ecx, map    ; c = map+ren_i
+                xor eax, eax    ; a = 0
+                mov al,  [ecx]  ; a = map[ren_i]
+                mov ecx, eax    ; c = map[ren_i]
+                add ecx, ren    ; c = ren+map[ren_i] (a pointer to the character to be displayed from the render sheet)
 
             ren_post:
 
@@ -494,8 +494,8 @@ segment readable writeable
     py dw 1
 
     ; Map size and data
-    width  = 15
-    height = 15
+    width  = 51
+    height = 31
     map    rb width * height
 
     mzx dd ?
